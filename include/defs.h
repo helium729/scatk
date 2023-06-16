@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <eigen3/Eigen/Core>
 
 namespace scatk {
     typedef unsigned char u8;
