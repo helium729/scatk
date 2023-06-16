@@ -11,6 +11,14 @@ set(VERSION_MAJOR 0)
 set(VERSION_MINOR 1)
 set(VERSION_PATCH 0)
 
+# detect python3
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+find_package(Python3 COMPONENTS NumPy)
+
+# add python include path
+include_directories(${Python3_INCLUDE_DIRS})
+include_directories(${Python3_NumPy_INCLUDE_DIRS})
+
 # set include path
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
