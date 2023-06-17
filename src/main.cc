@@ -18,6 +18,7 @@ int main(int argc, char** argv)
     p.add_parameter("r", "reference", "Reference file", argparse::STRING, false, "");
     p.add_parameter("", "no-gui", "Disable GUI", argparse::NONE, false, "");
     p.add_parameter("", "transposed", "Wave is transposed", argparse::NONE, false, "");
+    p.add_parameter("", "point-index", "Point index to analyze/index step for t-graph", argparse::INTEGER, false, "0");
 
 
     bool parse_result = p.parse(argc, argv);
@@ -51,7 +52,13 @@ int main(int argc, char** argv)
 
     std::string output_file;
     p.get_parameter_value_to("--output", &output_file);
-    std::cout << "Output file: " << output_file << std::endl;
+    if (output_file != "")
+        std::cout << "Output file: " << output_file << std::endl;
+
+    std::string reference_file;
+    p.get_parameter_value_to("--reference", &reference_file);
+    if (reference_file != "")
+        std::cout << "Reference file: " << reference_file << std::endl;
 
     bool no_gui;
     p.get_parameter_value_to("--no-gui", &no_gui);
@@ -60,6 +67,12 @@ int main(int argc, char** argv)
     bool transposed;
     p.get_parameter_value_to("--transposed", &transposed);
     std::cout << "Transposed: " << transposed << std::endl;
+
+    scatk::u64 point_index;
+    p.get_parameter_value_to("--point-index", &point_index);
+    if (point_index != 0)
+        std::cout << "Point index: " << point_index << std::endl;
+
 
     std::string plot_what;
     p.get_parameter_value_to("-p", &plot_what);
@@ -246,7 +259,93 @@ int main(int argc, char** argv)
         scatk::reader r(trace_file, scatk::reader::Mode::HEX);
         r.transpose(point_count, trace_count, output_file);
     }
+    else if (plot_what == "t-test")
+    {
+        if (!transposed)
+        {
+            std::cerr << "Please transpose the wave" << std::endl;
+            return 1;
+        }
+        scatk::reader r1(trace_file, scatk::reader::Mode::HEX);
+        scatk::reader r2(reference_file, scatk::reader::Mode::HEX);
+        std::vector<scatk::f64> buffer1(trace_count);
+        std::vector<scatk::f64> buffer2(trace_count);
+        std::vector<scatk::f64> result(point_count);
+        for (scatk::u64 i = 0; i < point_count; i++)
+        {
+            r1.readline(buffer1, i, point_count, trace_count);
+            r2.readline(buffer2, i, point_count, trace_count);
+            // get eigen vector from buffer
+            Eigen::VectorXd vec1 = Eigen::Map<Eigen::VectorXd>(buffer1.data(), buffer1.size());
+            Eigen::VectorXd vec2 = Eigen::Map<Eigen::VectorXd>(buffer2.data(), buffer2.size());
+            // calculate mean
+            Eigen::VectorXd mean1 = vec1.mean() * Eigen::VectorXd::Ones(vec1.size());
+            Eigen::VectorXd mean2 = vec2.mean() * Eigen::VectorXd::Ones(vec2.size());
+            // square each element
+            Eigen::VectorXd mean_squared1 = mean1.array().square();
+            Eigen::VectorXd mean_squared2 = mean2.array().square();
+            // square each element of traces
+            Eigen::VectorXd vec_squared1 = vec1.array().square();
+            Eigen::VectorXd vec_squared2 = vec2.array().square();
+            // drop vec to save memory
+            vec1.resize(0);
+            vec2.resize(0);
+            // for each column, subtract mean_squared
+            Eigen::VectorXd vec_squared_minus_mean_squared1 = vec_squared1 - mean_squared1;
+            Eigen::VectorXd vec_squared_minus_mean_squared2 = vec_squared2 - mean_squared2;
+            // drop vec_squared and mean_squared to save memory
+            vec_squared1.resize(0);
+            vec_squared2.resize(0);
+            mean_squared1.resize(0);
+            mean_squared2.resize(0);
+            // calculate sample variance
+            scatk::f64 var1 = vec_squared_minus_mean_squared1.sum() / (trace_count - 1);
+            scatk::f64 var2 = vec_squared_minus_mean_squared2.sum() / (trace_count - 1);
+            // calculate t-statistic
+            scatk::f64 m1 = mean1[0];
+            scatk::f64 m2 = mean2[0];
+            scatk::f64 t = (mean1[0] - mean2[0]) / std::sqrt(var1 / trace_count + var2 / trace_count);
+            result.at(i) = t;
+        }
+        r1.close();
+        r2.close();
+        if (!no_gui)
+        {
+            plt::plot(result);
+            plt::show();
+        }
 
+    }
+    else if (plot_what == "point_dist")
+    {
+        if (!transposed)
+        {
+            std::cerr << "Please transpose the wave" << std::endl;
+            return 1;
+        }
+        scatk::reader r(trace_file, scatk::reader::Mode::HEX);
+        std::vector<scatk::f64> buffer(trace_count);
+        std::vector<scatk::u64> result(1024);
+        r.readline(buffer, point_index, point_count, trace_count);
+        for (scatk::f64 value : buffer)
+        {
+            scatk::u64 index = (scatk::u64)(value * 1024);
+            if (index < 1024)
+            {
+                result.at(index)++;
+            }
+        }
+        r.close();
+        if (!no_gui)
+        {
+            plt::plot(result);
+            plt::show();
+        }
+    }
+    else if (plot_what == "t-graph")
+    {
+        
+    }
 
     return 0;
 }
