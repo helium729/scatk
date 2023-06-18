@@ -310,6 +310,7 @@ int main(int argc, char** argv)
             printf("\r%lld/%lld", (scatk::u64)(i + 1), point_count);
             fflush(stdout);
         }
+        printf("\n");
         r1.close();
         r2.close();
         if (!no_gui)
