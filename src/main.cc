@@ -306,6 +306,9 @@ int main(int argc, char** argv)
             scatk::f64 m2 = mean2[0];
             scatk::f64 t = (mean1[0] - mean2[0]) / std::sqrt(var1 / trace_count + var2 / trace_count);
             result.at(i) = t;
+            // print progress
+            printf("\r%lld/%lld", (scatk::u64)(i + 1), point_count);
+            fflush(stdout);
         }
         r1.close();
         r2.close();
