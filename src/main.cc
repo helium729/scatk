@@ -1,4 +1,3 @@
-
 #include "argparse/parser.h"
 #include "defs.h"
 #include "reader.h"
@@ -103,33 +102,7 @@ int main(int argc, char** argv)
     {
         if (!transposed)
         {
-            scatk::reader r(trace_file, scatk::reader::Mode::HEX);
-            std::vector<scatk::f64> buffer(point_count * trace_count);
-            r.read(buffer, point_count, trace_count);
-            r.close();
-            // convert buffer to eigen matrix of traces
-            Eigen::MatrixXd traces = Eigen::Map<Eigen::MatrixXd>(buffer.data(), point_count, trace_count);
-            // drop buffer to save memory
-            buffer.resize(0);
-            // calculate mean of each row
-            Eigen::VectorXd mean = traces.rowwise().mean();
-            // convert mean to vector
-            std::vector<scatk::f64> mean_vec(mean.data(), mean.data() + mean.size());
-            // plot mean
-            if (!no_gui)
-            {
-                plt::plot(mean_vec);
-                plt::show();
-            }
-            if (output_file != "")
-            {
-                std::ofstream out(output_file);
-                for (scatk::f64 value : mean_vec)
-                {
-                    out << value << std::endl;
-                }
-                out.close();
-            }
+            std::cerr << "Too many points to plot mean\nPlease transpose the wave." << std::endl;
         }
         else // transposed
         {
@@ -141,9 +114,10 @@ int main(int argc, char** argv)
             {
                 r.readline(buffer, i, point_count, trace_count);
                 // get eigen vector from buffer
-                Eigen::VectorXd vec = Eigen::Map<Eigen::VectorXd>(buffer.data(), buffer.size());
+                std::vector<scatk::f64> vec(point_index);
+                std::copy(buffer.begin(), buffer.begin() + point_index, vec.data());
                 // calculate mean
-                result.at(i) = vec.mean();
+                result.at(i) = std::accumulate(vec.begin(), vec.end(), 0.0) / vec.size();
             }
             r.close();
             if (!no_gui)
@@ -157,96 +131,42 @@ int main(int argc, char** argv)
     {
         if (!transposed)
         {
-            if (point_count * trace_count > (scatk::u64)1E8)
-            {
-                std::cerr << "Too many points to plot variance\nPlease transpose the wave." << std::endl;
-                return 1;
-            }
-            scatk::reader r(trace_file, scatk::reader::Mode::HEX);
-            std::vector<scatk::f64> buffer(point_count * trace_count);
-            r.read(buffer, point_count, trace_count);
-            r.close();
-            // convert buffer to eigen matrix of traces
-            Eigen::MatrixXd traces = Eigen::Map<Eigen::MatrixXd>(buffer.data(), point_count, trace_count);
-            // drop buffer to save memory
-            buffer.resize(0);
-            // calculate mean of each row
-            Eigen::VectorXd mean = traces.rowwise().mean();
-            // square each element
-            Eigen::VectorXd mean_squared = mean.array().square();
-            // square each element of traces
-            Eigen::MatrixXd traces_squared = traces.array().square();
-            // drop traces to save memory
-            traces.resize(0, 0);
-            // for each column, subtract mean_squared
-            Eigen::MatrixXd traces_squared_minus_mean_squared = traces_squared.colwise() - mean_squared;
-            // drop traces_squared to save memory
-            traces_squared.resize(0, 0);
-            // calculate sample variance
-            Eigen::VectorXd var = traces_squared_minus_mean_squared.rowwise().sum() / (trace_count - 1);
-            // drop traces_squared_minus_mean_squared to save memory
-            traces_squared_minus_mean_squared.resize(0, 0);
-            // plot var
-            std::vector<scatk::f64> var_vec(var.data(), var.data() + var.size());
-            if (!no_gui)
-            {
-                plt::plot(var_vec);
-                plt::show();
-            }        
-            if (output_file != "")
-            {
-                std::ofstream out(output_file);
-                for (scatk::f64 value : var_vec)
-                {
-                    out << value << std::endl;
-                }
-                out.close();
-            }
+            std::cerr << "Too many points to plot variance\nPlease transpose the wave." << std::endl;
+            return 1;
         }
-        else //transposed
-        {
-            std::vector<scatk::f64> result(point_count);
-            scatk::reader r(trace_file, scatk::reader::Mode::HEX);
-            std::vector<scatk::f64> buffer(trace_count);
+        std::vector<scatk::f64> result(point_count);
+        scatk::reader r(trace_file, scatk::reader::Mode::HEX);
+        std::vector<scatk::f64> buffer(trace_count);
 
-            for (scatk::u64 i = 0; i < point_count; i++)
+        for (scatk::u64 i = 0; i < point_count; i++)
+        {
+            r.readline(buffer, i, point_count, trace_count);
+            // get vector from buffer
+            std::vector<scatk::f64> vec = buffer;
+            // calculate mean
+            scatk::f64 mean = std::accumulate(vec.begin(), vec.end(), 0.0) / vec.size();
+            scatk::f64 mean_squared = mean * mean;
+            // square each element of traces
+            std::transform(vec.begin(), vec.end(), vec.begin(), [](scatk::f64 x) { return x * x; });
+            // for each column, subtract mean_squared
+            std::transform(vec.begin(), vec.end(), vec.begin(), [mean_squared](scatk::f64 x) { return x - mean_squared; });
+            // calculate sample variance
+            result[i] = std::accumulate(vec.begin(), vec.end(), 0.0) / (trace_count - 1);
+        }
+        r.close();
+        if (!no_gui)
+        {
+            plt::plot(result);
+            plt::show();
+        }
+        if (output_file != "")
+        {
+            std::ofstream out(output_file);
+            for (scatk::f64 value : result)
             {
-                r.readline(buffer, i, point_count, trace_count);
-                // get eigen vector from buffer
-                Eigen::VectorXd vec = Eigen::Map<Eigen::VectorXd>(buffer.data(), buffer.size());
-                // calculate mean
-                Eigen::VectorXd mean = vec.mean() * Eigen::VectorXd::Ones(vec.size());
-                // square each element
-                Eigen::VectorXd mean_squared = mean.array().square();
-                // drop mean to save memory
-                mean.resize(0);
-                // square each element of traces
-                Eigen::VectorXd vec_squared = vec.array().square();
-                // drop vec to save memory
-                vec.resize(0);
-                // for each column, subtract mean_squared
-                Eigen::VectorXd vec_squared_minus_mean_squared = vec_squared - mean_squared;
-                // drop vec_squared and mean_squared to save memory
-                vec_squared.resize(0);
-                mean_squared.resize(0);
-                // calculate sample variance
-                result.at(i) = vec_squared_minus_mean_squared.sum() / (trace_count - 1);
+                out << value << std::endl;
             }
-            r.close();
-            if (!no_gui)
-            {
-                plt::plot(result);
-                plt::show();
-            }
-            if (output_file != "")
-            {
-                std::ofstream out(output_file);
-                for (scatk::f64 value : result)
-                {
-                    out << value << std::endl;
-                }
-                out.close();
-            }
+            out.close();
         }
     }
     else if (plot_what == "transpose")
@@ -275,34 +195,30 @@ int main(int argc, char** argv)
         {
             r1.readline(buffer1, i, point_count, trace_count);
             r2.readline(buffer2, i, point_count, trace_count);
-            // get eigen vector from buffer
-            Eigen::VectorXd vec1 = Eigen::Map<Eigen::VectorXd>(buffer1.data(), buffer1.size());
-            Eigen::VectorXd vec2 = Eigen::Map<Eigen::VectorXd>(buffer2.data(), buffer2.size());
-            // calculate mean
-            Eigen::VectorXd mean1 = vec1.mean() * Eigen::VectorXd::Ones(vec1.size());
-            Eigen::VectorXd mean2 = vec2.mean() * Eigen::VectorXd::Ones(vec2.size());
+            // get vector from buffer
+            std::vector<scatk::f64> vec1 = buffer1;
+            std::vector<scatk::f64> vec2 = buffer2;
+            // calculate mean without eigen
+            scatk::f64 mean1 = std::accumulate(vec1.begin(), vec1.end(), 0.0) / vec1.size();
+            scatk::f64 mean2 = std::accumulate(vec2.begin(), vec2.end(), 0.0) / vec2.size();
             // square each element
-            Eigen::VectorXd mean_squared1 = mean1.array().square();
-            Eigen::VectorXd mean_squared2 = mean2.array().square();
+            scatk::f64 mean_squared1 = mean1 * mean1;
+            scatk::f64 mean_squared2 = mean2 * mean2;
             // square each element of traces
-            Eigen::VectorXd vec_squared1 = vec1.array().square();
-            Eigen::VectorXd vec_squared2 = vec2.array().square();
-            // drop vec to save memory
-            vec1.resize(0);
-            vec2.resize(0);
+            std::vector<scatk::f64> vec_squared1(vec1.size());
+            std::vector<scatk::f64> vec_squared2(vec2.size());
+            std::transform(vec1.begin(), vec1.end(), vec_squared1.begin(), [](scatk::f64 x) { return x * x; });
+            std::transform(vec2.begin(), vec2.end(), vec_squared2.begin(), [](scatk::f64 x) { return x * x; });
             // for each column, subtract mean_squared
-            Eigen::VectorXd vec_squared_minus_mean_squared1 = vec_squared1 - mean_squared1;
-            Eigen::VectorXd vec_squared_minus_mean_squared2 = vec_squared2 - mean_squared2;
-            // drop vec_squared and mean_squared to save memory
-            vec_squared1.resize(0);
-            vec_squared2.resize(0);
-            mean_squared1.resize(0);
-            mean_squared2.resize(0);
+            std::vector<scatk::f64> vec_squared_minus_mean_squared1(vec_squared1.size());
+            std::vector<scatk::f64> vec_squared_minus_mean_squared2(vec_squared2.size());
+            std::transform(vec_squared1.begin(), vec_squared1.end(), vec_squared_minus_mean_squared1.begin(), [mean_squared1](scatk::f64 x) { return x - mean_squared1; });
+            std::transform(vec_squared2.begin(), vec_squared2.end(), vec_squared_minus_mean_squared2.begin(), [mean_squared2](scatk::f64 x) { return x - mean_squared2; });
             // calculate sample variance
-            scatk::f64 var1 = vec_squared_minus_mean_squared1.sum() / (trace_count - 1);
-            scatk::f64 var2 = vec_squared_minus_mean_squared2.sum() / (trace_count - 1);
+            scatk::f64 var1 = std::accumulate(vec_squared_minus_mean_squared1.begin(), vec_squared_minus_mean_squared1.end(), 0.0) / (trace_count - 1);
+            scatk::f64 var2 = std::accumulate(vec_squared_minus_mean_squared2.begin(), vec_squared_minus_mean_squared2.end(), 0.0) / (trace_count - 1);
             // calculate t-statistic
-            scatk::f64 t = (mean1[0] - mean2[0]) / std::sqrt(var1 / trace_count + var2 / trace_count);
+            scatk::f64 t = (mean1 - mean2) / std::sqrt(var1 / trace_count + var2 / trace_count);
             result.at(i) = t;
             // print progress
             printf("\r%lld/%lld", (scatk::u64)(i + 1), point_count);
@@ -354,57 +270,47 @@ int main(int argc, char** argv)
         scatk::reader r1(trace_file, scatk::reader::Mode::HEX);
         scatk::reader r2(reference_file, scatk::reader::Mode::HEX);
         // create a matrix of t-statistics
-        Eigen::MatrixXd t_matrix(point_count, trace_count / point_index);
-        t_matrix.setZero();
+        std::vector<std::vector<scatk::f64>> t_matrix(point_count, std::vector<scatk::f64>(trace_count / point_index));
         for (scatk::u64 i = 0; i < point_count; i++)
         {
-            std::vector<scatk::f64> buffer1;
-            std::vector<scatk::f64> buffer2;
+            std::vector<scatk::f64> buffer1(trace_count);
+            std::vector<scatk::f64> buffer2(trace_count);
             r1.readline(buffer1, i, point_count, trace_count);
             r2.readline(buffer2, i, point_count, trace_count);
             for (scatk::u64 j = point_index; j <= trace_count; j += point_index)
-            {
-                // allocate memory for vec1 and vec2
-                Eigen::VectorXd vec1;
-                vec1.resize(j);
-                Eigen::VectorXd vec2;
-                vec2.resize(j);
+            {   
+                // create vectors
+                std::vector<scatk::f64> vec1(j);
+                std::vector<scatk::f64> vec2(j);
                 // copy buffer1 and buffer2 to vec1 and vec2
                 std::copy(buffer1.begin(), buffer1.begin() + j, vec1.data());
                 std::copy(buffer2.begin(), buffer2.begin() + j, vec2.data());
                 // calculate mean
-                Eigen::VectorXd mean1 = vec1.mean() * Eigen::VectorXd::Ones(vec1.size());
-                Eigen::VectorXd mean2 = vec2.mean() * Eigen::VectorXd::Ones(vec2.size());
+                scatk::f64 mean1 = std::accumulate(vec1.begin(), vec1.end(), 0.0) / vec1.size();
+                scatk::f64 mean2 = std::accumulate(vec2.begin(), vec2.end(), 0.0) / vec2.size();
                 // square each element
-                Eigen::VectorXd mean_squared1 = mean1.array().square();
-                Eigen::VectorXd mean_squared2 = mean2.array().square();
+                scatk::f64 mean_squared1 = mean1 * mean1;
+                scatk::f64 mean_squared2 = mean2 * mean2;
                 // square each element of traces
-                Eigen::VectorXd vec_squared1 = vec1.array().square();
-                Eigen::VectorXd vec_squared2 = vec2.array().square();
-                // drop vec to save memory
-                vec1.resize(0);
-                vec2.resize(0);
+                std::vector<scatk::f64> vec_squared1(vec1.size());
+                std::vector<scatk::f64> vec_squared2(vec2.size());
+                std::transform(vec1.begin(), vec1.end(), vec_squared1.begin(), [](scatk::f64 x) { return x * x; });
+                std::transform(vec2.begin(), vec2.end(), vec_squared2.begin(), [](scatk::f64 x) { return x * x; });
                 // for each column, subtract mean_squared
-                Eigen::VectorXd vec_squared_minus_mean_squared1 = vec_squared1 - mean_squared1;
-                Eigen::VectorXd vec_squared_minus_mean_squared2 = vec_squared2 - mean_squared2;
-                // drop vec_squared and mean_squared to save memory
-                vec_squared1.resize(0);
-                vec_squared2.resize(0);
-                mean_squared1.resize(0);
-                mean_squared2.resize(0);
+                std::vector<scatk::f64> vec_squared_minus_mean_squared1(vec_squared1.size());
+                std::vector<scatk::f64> vec_squared_minus_mean_squared2(vec_squared2.size());
+                std::transform(vec_squared1.begin(), vec_squared1.end(), vec_squared_minus_mean_squared1.begin(), [mean_squared1](scatk::f64 x) { return x - mean_squared1; });
+                std::transform(vec_squared2.begin(), vec_squared2.end(), vec_squared_minus_mean_squared2.begin(), [mean_squared2](scatk::f64 x) { return x - mean_squared2; });
                 // calculate sample variance
-                scatk::f64 var1 = vec_squared_minus_mean_squared1.sum() / (j - 1);
-                scatk::f64 var2 = vec_squared_minus_mean_squared2.sum() / (j - 1);
+                scatk::f64 var1 = std::accumulate(vec_squared_minus_mean_squared1.begin(), vec_squared_minus_mean_squared1.end(), 0.0) / (j - 1);
+                scatk::f64 var2 = std::accumulate(vec_squared_minus_mean_squared2.begin(), vec_squared_minus_mean_squared2.end(), 0.0) / (j - 1);
                 // calculate t-statistic
-                scatk::f64 t = (mean1[0] - mean2[0]) / std::sqrt(var1 / j + var2 / j);
+                scatk::f64 t = (mean1 - mean2) / std::sqrt(var1 / j + var2 / j);
                 t = std::abs(t);
-                // drop vec_squared_minus_mean_squared to save memory
-                mean1.resize(0);
-                mean2.resize(0);
                 vec_squared_minus_mean_squared1.resize(0);
                 vec_squared_minus_mean_squared2.resize(0);
                 // write t-statistic to matrix
-                t_matrix(i, j / point_index - 1) = t;
+                t_matrix.at(i).at(j / point_index - 1) = t;
             }
             // print progress
             printf("\r%lld/%lld", (scatk::u64)(i + 1), point_count);
@@ -418,7 +324,7 @@ int main(int argc, char** argv)
             {
                 for (scatk::u64 j = 0; j < trace_count / point_index; j++)
                 {
-                    out << t_matrix(i, j) << " ";
+                    out << t_matrix.at(i).at(j) << " ";
                 }
                 out << std::endl;
             }
@@ -430,12 +336,20 @@ int main(int argc, char** argv)
 
         // plot t-statistic matrix
         // get max t for each step
-        Eigen::VectorXd max_t = t_matrix.colwise().maxCoeff();
-        // convert max_t to vector
-        std::vector<scatk::f64> max_t_vec(max_t.data(), max_t.data() + max_t.size());
+        std::vector<scatk::f64> max_t(trace_count / point_index);
+        for (scatk::u64 i = 0; i < trace_count / point_index; i++)
+        {
+            scatk::f64 max = 0;
+            for (scatk::u64 j = 0; j < point_count; j++)
+            {
+                if (t_matrix.at(j).at(i) > max)
+                    max = t_matrix.at(j).at(i);
+            }
+            max_t.at(i) = max;
+        }
         if (!no_gui)
         {
-            plt::plot(max_t_vec);
+            plt::plot(max_t);
             plt::show();
         }
         // write max_t to file

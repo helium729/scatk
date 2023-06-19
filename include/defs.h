@@ -3,7 +3,10 @@
 
 #include <stdint.h>
 #include <string>
-#include <eigen3/Eigen/Core>
+#include <vector>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
 namespace scatk {
     typedef unsigned char u8;

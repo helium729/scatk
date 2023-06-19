@@ -20,7 +20,6 @@ namespace scatk
         reader(std::string path, Mode mode = HEX);
         ~reader();
 
-        bool read(std::vector<f64>& buffer, u64 size);
         bool read(std::vector<f64>& buffer, u64 point_count, u64 trace_count);
         bool transpose(u64 point_count, u64 trace_count, std::string output_file, u64 point_length = 3);
         bool readline(std::vector<f64>& buffer, u64 line_number, u64 point_count, u64 trace_count);
@@ -29,8 +28,10 @@ namespace scatk
 
     private:
         std::ifstream* file;
+        FILE* in;
         std::string path;
         Mode mode;
+        u64 last_line;
     };
 }
 

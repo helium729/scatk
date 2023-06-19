@@ -14,57 +14,12 @@ reader::reader(std::string path, Mode mode)
     }
     // open file
     file->close();
+    in = fopen(path.c_str(), "r");
     this->mode = mode;
 }
 
 reader::~reader()
 {
-}
-
-bool reader::read(std::vector<f64>& buffer, u64 size)
-{
-    file->open(path);
-    u64 counter = 0;
-    
-    for (std::string line; std::getline(*file, line);)
-    {
-        //split line with spaces
-        std::vector<std::string> tokens;
-        std::istringstream iss(line);
-        for (std::string s; iss >> s;)
-            tokens.push_back(s);
-        // check if line is empty
-        if (tokens.size() == 0)
-            continue;
-
-        u64 temp;
-        if (counter >= size)
-            return false;
-
-        // for each token in line
-        for (std::string token : tokens)
-        {
-            switch (mode)
-            {
-                case HEX:
-                    // read hex value from tokens
-                    temp = std::stoul(token, 0, 16);
-                    // convert to double
-                    buffer.push_back((f64)temp);
-                    break;
-                case DEC:
-                    temp = std::stoul(token, 0, 10);
-                    buffer.push_back((f64)temp);
-                    break;
-                case BIN:
-                    std::cerr << "not implemented yet" << std::endl;
-                    break;
-            }
-            counter++;
-        }
-    }
-    file->close();
-    return true;
 }
 
 bool reader::read(std::vector<f64>& buffer, u64 point_count, u64 trace_count)
@@ -166,17 +121,21 @@ bool reader::transpose(u64 point_count, u64 trace_count, std::string output_file
 
 bool reader::readline(std::vector<f64>& buffer, u64 line_number, u64 point_count, u64 trace_count)
 {
-    buffer.resize(trace_count);
-    FILE* in = fopen(path.c_str(), "r");
+    
     if (in == NULL)
     {
         std::cerr << "Could not open file " << path << std::endl;
         return false;
     }
     char* line = new char[trace_count * (3 + 1)];
-    fseek(in, line_number * (trace_count * (3 + 1)), SEEK_SET);
+    if (line_number != last_line + 1)
+    {
+        fseek(in, line_number * (trace_count * (3 + 1)), SEEK_SET);
+        last_line = line_number;
+    }
+    else
+        last_line++;
     fread(line, sizeof(char), trace_count * (3 + 1), in);
-    fclose(in);
     std::string line_str(line);
     std::vector<std::string> tokens;
     std::istringstream iss(line_str);
@@ -194,21 +153,23 @@ bool reader::readline(std::vector<f64>& buffer, u64 line_number, u64 point_count
                 // read hex value from tokens
                 temp = std::stoul(token, 0, 16);
                 // convert to double
-                buffer.at(index) = (f64)temp;
+                buffer[index] = (f64)temp;
                 break;
             case DEC:
                 temp = std::stoul(token, 0, 10);
-                buffer.at(index) = (f64)temp;
+                buffer[index] = (f64)temp;
             case BIN:
                 std::cerr << "not implemented yet" << std::endl;
                 break;
         }
         index++;
     }
+    delete[] line;
     return true;
 }
 
 void reader::close()
 {
+    fclose(in);
 }
 

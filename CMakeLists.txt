@@ -21,7 +21,6 @@ find_package(Eigen3 REQUIRED)
 # add include path of packages
 include_directories(${Python3_INCLUDE_DIRS})
 include_directories(${Python3_NumPy_INCLUDE_DIRS})
-include_directories(${EIGEN3_INCLUDE_DIR})
 
 # set include path
 include_directories(${PROJECT_SOURCE_DIR}/include)
@@ -52,6 +51,5 @@ add_executable(${PROJECT_NAME} ${SRC_LIST})
 # link packages
 target_link_libraries(${PROJECT_NAME} ${Python3_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} ${Python3_NumPy_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} ${EIGEN3_LIBRARIES})
 
 
