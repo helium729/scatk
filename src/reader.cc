@@ -166,6 +166,7 @@ bool reader::transpose(u64 point_count, u64 trace_count, std::string output_file
 
 bool reader::readline(std::vector<f64>& buffer, u64 line_number, u64 point_count, u64 trace_count)
 {
+    buffer.resize(trace_count);
     FILE* in = fopen(path.c_str(), "r");
     if (in == NULL)
     {

@@ -302,8 +302,6 @@ int main(int argc, char** argv)
             scatk::f64 var1 = vec_squared_minus_mean_squared1.sum() / (trace_count - 1);
             scatk::f64 var2 = vec_squared_minus_mean_squared2.sum() / (trace_count - 1);
             // calculate t-statistic
-            scatk::f64 m1 = mean1[0];
-            scatk::f64 m2 = mean2[0];
             scatk::f64 t = (mean1[0] - mean2[0]) / std::sqrt(var1 / trace_count + var2 / trace_count);
             result.at(i) = t;
             // print progress
@@ -348,12 +346,96 @@ int main(int argc, char** argv)
     }
     else if (plot_what == "t-graph")
     {
-        if (output_file == "")
+        if (!transposed)
         {
-            std::cerr << "This output is too big" << std::endl;
-            std::cerr << "Please specify output file" << std::endl;
+            std::cerr << "Please transpose the wave" << std::endl;
             return 1;
         }
+        scatk::reader r1(trace_file, scatk::reader::Mode::HEX);
+        scatk::reader r2(reference_file, scatk::reader::Mode::HEX);
+        std::vector<scatk::f64> buffer1;
+        std::vector<scatk::f64> buffer2;
+        Eigen::VectorXd vec1, vec2, mean1, mean2, mean_squared1, mean_squared2, vec_squared1, vec_squared2, vec_squared_minus_mean_squared1, vec_squared_minus_mean_squared2;
+        scatk::f64 var1, var2, m1, m2, t;
+        // create a matrix of t-statistics
+        Eigen::MatrixXd t_matrix(point_count, trace_count / point_index);
+        for (scatk::u64 i = 0; i < point_count; i++)
+        {
+            r1.readline(buffer1, i, point_count, trace_count);
+            r2.readline(buffer2, i, point_count, trace_count);
+            for (scatk::u64 j = point_index; j <= trace_count; j += point_index)
+            {
+                // get eigen vector from buffer
+                vec1 = Eigen::Map<Eigen::VectorXd>(buffer1.data(), j);
+                vec2 = Eigen::Map<Eigen::VectorXd>(buffer2.data(), j);
+                // calculate mean
+                mean1 = vec1.mean() * Eigen::VectorXd::Ones(vec1.size());
+                mean2 = vec2.mean() * Eigen::VectorXd::Ones(vec2.size());
+                // square each element
+                mean_squared1 = mean1.array().square();
+                mean_squared2 = mean2.array().square();
+                // square each element of traces
+                vec_squared1 = vec1.array().square();
+                vec_squared2 = vec2.array().square();
+                // drop vec to save memory
+                vec1.resize(0);
+                vec2.resize(0);
+                // for each column, subtract mean_squared
+                vec_squared_minus_mean_squared1 = vec_squared1 - mean_squared1;
+                vec_squared_minus_mean_squared2 = vec_squared2 - mean_squared2;
+                // drop vec_squared and mean_squared to save memory
+                vec_squared1.resize(0);
+                vec_squared2.resize(0);
+                mean_squared1.resize(0);
+                mean_squared2.resize(0);
+                // calculate sample variance
+                var1 = vec_squared_minus_mean_squared1.sum() / (j - 1);
+                var2 = vec_squared_minus_mean_squared2.sum() / (j - 1);
+                // calculate t-statistic
+                t = (mean1[0] - mean2[0]) / std::sqrt(var1 / j + var2 / j);
+                t = std::abs(t);
+                // drop vec_squared_minus_mean_squared to save memory
+                mean1.resize(0);
+                mean2.resize(0);
+                vec_squared_minus_mean_squared1.resize(0);
+                vec_squared_minus_mean_squared2.resize(0);
+                // write t-statistic to matrix
+                t_matrix(i, j / point_index - 1) = t;
+            }
+            // print progress
+            printf("\r%lld/%lld", (scatk::u64)(i + 1), point_count);
+            fflush(stdout);
+        }
+        // write t-statistic matrix to file
+        if (output_file != "")
+        {
+            std::ofstream out(output_file);
+            for (scatk::u64 i = 0; i < point_count; i++)
+            {
+                for (scatk::u64 j = 0; j < trace_count / point_index; j++)
+                {
+                    out << t_matrix(i, j) << " ";
+                }
+                out << std::endl;
+            }
+            out.close();
+        }
+        printf("\n");
+        r1.close();
+        r2.close();
+
+        // plot t-statistic matrix
+        // get max t for each step
+        Eigen::VectorXd max_t = t_matrix.colwise().maxCoeff();
+        // convert max_t to vector
+        std::vector<scatk::f64> max_t_vec(max_t.data(), max_t.data() + max_t.size());
+        if (!no_gui)
+        {
+            plt::plot(max_t_vec);
+            plt::show();
+        }
+        // write max_t to file
+
     }
 
     return 0;
