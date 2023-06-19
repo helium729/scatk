@@ -353,46 +353,50 @@ int main(int argc, char** argv)
         }
         scatk::reader r1(trace_file, scatk::reader::Mode::HEX);
         scatk::reader r2(reference_file, scatk::reader::Mode::HEX);
-        std::vector<scatk::f64> buffer1;
-        std::vector<scatk::f64> buffer2;
-        Eigen::VectorXd vec1, vec2, mean1, mean2, mean_squared1, mean_squared2, vec_squared1, vec_squared2, vec_squared_minus_mean_squared1, vec_squared_minus_mean_squared2;
-        scatk::f64 var1, var2, m1, m2, t;
         // create a matrix of t-statistics
         Eigen::MatrixXd t_matrix(point_count, trace_count / point_index);
+        t_matrix.setZero();
         for (scatk::u64 i = 0; i < point_count; i++)
         {
+            std::vector<scatk::f64> buffer1;
+            std::vector<scatk::f64> buffer2;
             r1.readline(buffer1, i, point_count, trace_count);
             r2.readline(buffer2, i, point_count, trace_count);
             for (scatk::u64 j = point_index; j <= trace_count; j += point_index)
             {
-                // get eigen vector from buffer
-                vec1 = Eigen::Map<Eigen::VectorXd>(buffer1.data(), j);
-                vec2 = Eigen::Map<Eigen::VectorXd>(buffer2.data(), j);
+                // allocate memory for vec1 and vec2
+                Eigen::VectorXd vec1;
+                vec1.resize(j);
+                Eigen::VectorXd vec2;
+                vec2.resize(j);
+                // copy buffer1 and buffer2 to vec1 and vec2
+                std::copy(buffer1.begin(), buffer1.begin() + j, vec1.data());
+                std::copy(buffer2.begin(), buffer2.begin() + j, vec2.data());
                 // calculate mean
-                mean1 = vec1.mean() * Eigen::VectorXd::Ones(vec1.size());
-                mean2 = vec2.mean() * Eigen::VectorXd::Ones(vec2.size());
+                Eigen::VectorXd mean1 = vec1.mean() * Eigen::VectorXd::Ones(vec1.size());
+                Eigen::VectorXd mean2 = vec2.mean() * Eigen::VectorXd::Ones(vec2.size());
                 // square each element
-                mean_squared1 = mean1.array().square();
-                mean_squared2 = mean2.array().square();
+                Eigen::VectorXd mean_squared1 = mean1.array().square();
+                Eigen::VectorXd mean_squared2 = mean2.array().square();
                 // square each element of traces
-                vec_squared1 = vec1.array().square();
-                vec_squared2 = vec2.array().square();
+                Eigen::VectorXd vec_squared1 = vec1.array().square();
+                Eigen::VectorXd vec_squared2 = vec2.array().square();
                 // drop vec to save memory
                 vec1.resize(0);
                 vec2.resize(0);
                 // for each column, subtract mean_squared
-                vec_squared_minus_mean_squared1 = vec_squared1 - mean_squared1;
-                vec_squared_minus_mean_squared2 = vec_squared2 - mean_squared2;
+                Eigen::VectorXd vec_squared_minus_mean_squared1 = vec_squared1 - mean_squared1;
+                Eigen::VectorXd vec_squared_minus_mean_squared2 = vec_squared2 - mean_squared2;
                 // drop vec_squared and mean_squared to save memory
                 vec_squared1.resize(0);
                 vec_squared2.resize(0);
                 mean_squared1.resize(0);
                 mean_squared2.resize(0);
                 // calculate sample variance
-                var1 = vec_squared_minus_mean_squared1.sum() / (j - 1);
-                var2 = vec_squared_minus_mean_squared2.sum() / (j - 1);
+                scatk::f64 var1 = vec_squared_minus_mean_squared1.sum() / (j - 1);
+                scatk::f64 var2 = vec_squared_minus_mean_squared2.sum() / (j - 1);
                 // calculate t-statistic
-                t = (mean1[0] - mean2[0]) / std::sqrt(var1 / j + var2 / j);
+                scatk::f64 t = (mean1[0] - mean2[0]) / std::sqrt(var1 / j + var2 / j);
                 t = std::abs(t);
                 // drop vec_squared_minus_mean_squared to save memory
                 mean1.resize(0);
