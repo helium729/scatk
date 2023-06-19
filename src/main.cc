@@ -348,7 +348,12 @@ int main(int argc, char** argv)
     }
     else if (plot_what == "t-graph")
     {
-        
+        if (output_file == "")
+        {
+            std::cerr << "This output is too big" << std::endl;
+            std::cerr << "Please specify output file" << std::endl;
+            return 1;
+        }
     }
 
     return 0;
