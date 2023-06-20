@@ -103,42 +103,39 @@ int main(int argc, char** argv)
     {
         if (!transposed)
         {
-            std::cerr << "Too many points to plot mean\nPlease transpose the wave." << std::endl;
-        }
-        else // transposed
-        {
-            std::vector<scatk::f64> result(point_count);
+            std::vector<scatk::f64> result(point_count, 0);
             scatk::reader r(trace_file, scatk::reader::Mode::HEX);
-            std::vector<scatk::f64> buffer(trace_count);
-
-            for (scatk::u64 i = 0; i < point_count; i++)
+            std::vector<scatk::f64> buffer(point_count);
+            for (scatk::u64 i = 0; i < trace_count; i++)
             {
-                r.readline(buffer, i, point_count, trace_count);
-                // get eigen vector from buffer
-                std::vector<scatk::f64> vec(point_index);
-                std::copy(buffer.begin(), buffer.begin() + point_index, vec.data());
-                // calculate mean
-                result.at(i) = std::accumulate(vec.begin(), vec.end(), 0.0) / vec.size();
+                r.readline(buffer, i, point_count);
+                // add each element to result
+                std::transform(result.begin(), result.end(), buffer.begin(), result.begin(), std::plus<scatk::f64>());
             }
             r.close();
+            // divide each element by trace_count
+            std::transform(result.begin(), result.end(), result.begin(), [trace_count](scatk::f64 x) { return x / trace_count; });
             if (!no_gui)
             {
                 plt::plot(result);
                 plt::show();
-            }            
+            }
+        }
+        else // transposed
+        {
+            std::cerr << "Mean is not supposed to be calculated with transposed wave." << std::endl;           
         }
     }
     else if (plot_what == "var")
     {
+        std::vector<scatk::f64> result(point_count);
+        scatk::reader r(trace_file, scatk::reader::Mode::HEX);
         if (!transposed)
         {
             std::cerr << "Too many points to plot variance\nPlease transpose the wave." << std::endl;
             return 1;
         }
-        std::vector<scatk::f64> result(point_count);
-        scatk::reader r(trace_file, scatk::reader::Mode::HEX);
         std::vector<scatk::f64> buffer(trace_count);
-
         for (scatk::u64 i = 0; i < point_count; i++)
         {
             r.readline(buffer, i, point_count, trace_count);

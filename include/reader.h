@@ -22,6 +22,7 @@ namespace scatk
 
         bool read(std::vector<f64>& buffer, u64 point_count, u64 trace_count);
         bool transpose(u64 point_count, u64 trace_count, std::string output_file, u64 point_length = 3);
+        bool readline(std::vector<f64>& buffer, u64 line_number, u64 point_count);
         bool readline(std::vector<f64>& buffer, u64 line_number, u64 point_count, u64 trace_count);
 
         void close();
