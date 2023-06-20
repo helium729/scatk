@@ -7,6 +7,15 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+// multi-threading
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <future>
+
+
+#define THREAD_COUNT 12
 
 namespace scatk {
     typedef unsigned char u8;

@@ -2,6 +2,7 @@
 #include "defs.h"
 #include "reader.h"
 #include "matplotlibcpp.h"
+#include "analyzer.h"
 
 namespace plt = matplotlibcpp;
 
@@ -191,38 +192,67 @@ int main(int argc, char** argv)
         std::vector<scatk::f64> buffer1(trace_count);
         std::vector<scatk::f64> buffer2(trace_count);
         std::vector<scatk::f64> result(point_count);
+        // thread pool
+        std::vector<std::thread> threads(THREAD_COUNT);
+        std::vector<scatk::i64> thread_status(THREAD_COUNT, -1);
+        std::vector<std::promise<scatk::f64>> promises(THREAD_COUNT);
+        // initialize promises
+        for (scatk::u64 i = 0; i < THREAD_COUNT; i++)
+        {
+            promises.at(i) = std::promise<scatk::f64>();
+        }
+        std::vector<std::future<scatk::f64>> futures(THREAD_COUNT);
         for (scatk::u64 i = 0; i < point_count; i++)
         {
             r1.readline(buffer1, i, point_count, trace_count);
             r2.readline(buffer2, i, point_count, trace_count);
-            // get vector from buffer
-            std::vector<scatk::f64> vec1 = buffer1;
-            std::vector<scatk::f64> vec2 = buffer2;
-            // calculate mean without eigen
-            scatk::f64 mean1 = std::accumulate(vec1.begin(), vec1.end(), 0.0) / vec1.size();
-            scatk::f64 mean2 = std::accumulate(vec2.begin(), vec2.end(), 0.0) / vec2.size();
-            // square each element
-            scatk::f64 mean_squared1 = mean1 * mean1;
-            scatk::f64 mean_squared2 = mean2 * mean2;
-            // square each element of traces
-            std::vector<scatk::f64> vec_squared1(vec1.size());
-            std::vector<scatk::f64> vec_squared2(vec2.size());
-            std::transform(vec1.begin(), vec1.end(), vec_squared1.begin(), [](scatk::f64 x) { return x * x; });
-            std::transform(vec2.begin(), vec2.end(), vec_squared2.begin(), [](scatk::f64 x) { return x * x; });
-            // for each column, subtract mean_squared
-            std::vector<scatk::f64> vec_squared_minus_mean_squared1(vec_squared1.size());
-            std::vector<scatk::f64> vec_squared_minus_mean_squared2(vec_squared2.size());
-            std::transform(vec_squared1.begin(), vec_squared1.end(), vec_squared_minus_mean_squared1.begin(), [mean_squared1](scatk::f64 x) { return x - mean_squared1; });
-            std::transform(vec_squared2.begin(), vec_squared2.end(), vec_squared_minus_mean_squared2.begin(), [mean_squared2](scatk::f64 x) { return x - mean_squared2; });
-            // calculate sample variance
-            scatk::f64 var1 = std::accumulate(vec_squared_minus_mean_squared1.begin(), vec_squared_minus_mean_squared1.end(), 0.0) / (trace_count - 1);
-            scatk::f64 var2 = std::accumulate(vec_squared_minus_mean_squared2.begin(), vec_squared_minus_mean_squared2.end(), 0.0) / (trace_count - 1);
-            // calculate t-statistic
-            scatk::f64 t = (mean1 - mean2) / std::sqrt(var1 / trace_count + var2 / trace_count);
-            result.at(i) = t;
-            // print progress
-            printf("\r%lld/%lld", (scatk::u64)(i + 1), point_count);
-            fflush(stdout);
+            // check if thread is done
+            bool ready = false;
+            for (scatk::u64 j = 0; 1; j++)
+            {
+                j = j % THREAD_COUNT;
+                if (thread_status.at(j) == -1)
+                {
+                    // start thread
+                    futures.at(j) = promises.at(j).get_future();
+                    std::thread t(scatk::t_test, buffer1, buffer2, std::move(promises.at(j)));
+                    threads.at(j) = std::move(t);
+                    thread_status.at(j) = i;
+                    printf("Start thread %lld for line %lld\n", j, i + 1);
+                    fflush(stdout);
+                    break;
+                }
+                else
+                {
+                    // check if thread is done, if not continue
+                    if (futures.at(j).wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+                    {
+                        // get result
+                        result.at(thread_status.at(j)) = futures.at(j).get();
+                        // if joinable, join
+                        if (threads.at(j).joinable())
+                            threads.at(j).join();
+                        // set thread status to -1
+                        thread_status.at(j) = -1;
+                        // new promise
+                        promises.at(j) = std::promise<scatk::f64>();
+                    }
+                }
+            }
+        }
+        // wait for all threads to finish
+        for (scatk::u64 j = 0; j < THREAD_COUNT; j++)
+        {
+            if (thread_status.at(j) != -1)
+            {
+                // get result
+                result.at(thread_status.at(j)) = futures.at(j).get();
+                // if joinable, join
+                if (threads.at(j).joinable())
+                    threads.at(j).join();
+                // set thread status to -1
+                thread_status.at(j) = -1;
+            }
         }
         printf("\n");
         r1.close();
@@ -231,6 +261,15 @@ int main(int argc, char** argv)
         {
             plt::plot(result);
             plt::show();
+        }
+        if (output_file != "")
+        {
+            std::ofstream out(output_file);
+            for (scatk::f64 value : result)
+            {
+                out << value << std::endl;
+            }
+            out.close();
         }
 
     }
@@ -277,58 +316,71 @@ int main(int argc, char** argv)
             std::vector<scatk::f64> buffer2(trace_count);
             r1.readline(buffer1, i, point_count, trace_count);
             r2.readline(buffer2, i, point_count, trace_count);
+            // thread pool
+            std::vector<std::thread> threads(THREAD_COUNT);
+            std::vector<scatk::i64> thread_status(THREAD_COUNT, -1);
+            std::vector<std::promise<scatk::f64>> promises(THREAD_COUNT);
+            // initialize promises
+            for (scatk::u64 j = 0; j < THREAD_COUNT; j++)
+            {
+                promises.at(j) = std::promise<scatk::f64>();
+            }
+            // future vector
+            std::vector<std::future<scatk::f64>> futures(THREAD_COUNT);
             for (scatk::u64 j = point_index; j <= trace_count; j += point_index)
             {   
-                // create vectors
-                std::vector<scatk::f64> vec1(j);
-                std::vector<scatk::f64> vec2(j);
-                // copy buffer1 and buffer2 to vec1 and vec2
-                std::copy(buffer1.begin(), buffer1.begin() + j, vec1.data());
-                std::copy(buffer2.begin(), buffer2.begin() + j, vec2.data());
-                // calculate mean
-                scatk::f64 mean1 = std::accumulate(vec1.begin(), vec1.end(), 0.0) / vec1.size();
-                scatk::f64 mean2 = std::accumulate(vec2.begin(), vec2.end(), 0.0) / vec2.size();
-                // square each element
-                scatk::f64 mean_squared1 = mean1 * mean1;
-                scatk::f64 mean_squared2 = mean2 * mean2;
-                // square each element of traces
-                std::vector<scatk::f64> vec_squared1(vec1.size());
-                std::vector<scatk::f64> vec_squared2(vec2.size());
-                std::transform(vec1.begin(), vec1.end(), vec_squared1.begin(), [](scatk::f64 x) { return x * x; });
-                std::transform(vec2.begin(), vec2.end(), vec_squared2.begin(), [](scatk::f64 x) { return x * x; });
-                // for each column, subtract mean_squared
-                std::vector<scatk::f64> vec_squared_minus_mean_squared1(vec_squared1.size());
-                std::vector<scatk::f64> vec_squared_minus_mean_squared2(vec_squared2.size());
-                std::transform(vec_squared1.begin(), vec_squared1.end(), vec_squared_minus_mean_squared1.begin(), [mean_squared1](scatk::f64 x) { return x - mean_squared1; });
-                std::transform(vec_squared2.begin(), vec_squared2.end(), vec_squared_minus_mean_squared2.begin(), [mean_squared2](scatk::f64 x) { return x - mean_squared2; });
-                // calculate sample variance
-                scatk::f64 var1 = std::accumulate(vec_squared_minus_mean_squared1.begin(), vec_squared_minus_mean_squared1.end(), 0.0) / (j - 1);
-                scatk::f64 var2 = std::accumulate(vec_squared_minus_mean_squared2.begin(), vec_squared_minus_mean_squared2.end(), 0.0) / (j - 1);
-                // calculate t-statistic
-                scatk::f64 t = (mean1 - mean2) / std::sqrt(var1 / j + var2 / j);
-                t = std::abs(t);
-                vec_squared_minus_mean_squared1.resize(0);
-                vec_squared_minus_mean_squared2.resize(0);
-                // write t-statistic to matrix
-                t_matrix.at(i).at(j / point_index - 1) = t;
+                // calculate t-statistic for each step in parallel
+                for (scatk::u64 k = 0; 1; k++)
+                {
+                    k = k % THREAD_COUNT;
+                    if (thread_status.at(k) == -1)
+                    {
+                        // start thread
+                        futures.at(k) = promises.at(k).get_future();
+                        std::vector<scatk::f64> vec1(j);
+                        std::vector<scatk::f64> vec2(j);
+                        std::copy(buffer1.begin(), buffer1.begin() + j, vec1.data());
+                        std::copy(buffer2.begin(), buffer2.begin() + j, vec2.data());
+                        std::thread t(scatk::t_test, vec1, vec2, std::move(promises.at(k)));                        
+                        threads.at(k) = std::move(t);
+                        thread_status.at(k) = j;
+                        break;
+                    }
+                    else
+                    {
+                        // check if thread is done, if not continue
+                        if (futures.at(k).wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+                        {
+                            // get result
+                            t_matrix.at(i).at(thread_status.at(k) / point_index - 1) = futures.at(k).get();
+                            // if joinable, join
+                            if (threads.at(k).joinable())
+                                threads.at(k).join();
+                            // set thread status to -1
+                            thread_status.at(k) = -1;
+                            // new promise
+                            promises.at(k) = std::promise<scatk::f64>();
+                        }
+                    }
+                } 
+            }
+            // wait for all threads to finish
+            for (scatk::u64 k = 0; k < THREAD_COUNT; k++)
+            {
+                if (thread_status.at(k) != -1)
+                {
+                    // get result
+                    t_matrix.at(i).at(thread_status.at(k) / point_index - 1) = std::abs(futures.at(k).get());
+                    // if joinable, join
+                    if (threads.at(k).joinable())
+                        threads.at(k).join();
+                    // set thread status to -1
+                    thread_status.at(k) = -1;
+                }
             }
             // print progress
             printf("\r%lld/%lld", (scatk::u64)(i + 1), point_count);
             fflush(stdout);
-        }
-        // write t-statistic matrix to file
-        if (output_file != "")
-        {
-            std::ofstream out(output_file);
-            for (scatk::u64 i = 0; i < point_count; i++)
-            {
-                for (scatk::u64 j = 0; j < trace_count / point_index; j++)
-                {
-                    out << t_matrix.at(i).at(j) << " ";
-                }
-                out << std::endl;
-            }
-            out.close();
         }
         printf("\n");
         r1.close();
@@ -353,6 +405,15 @@ int main(int argc, char** argv)
             plt::show();
         }
         // write max_t to file
+        if (output_file != "")
+        {
+            std::ofstream out(output_file);
+            for (scatk::f64 value : max_t)
+            {
+                out << value << std::endl;
+            }
+            out.close();
+        }
 
     }
 
