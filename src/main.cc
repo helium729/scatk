@@ -201,11 +201,12 @@ int main(int argc, char** argv)
         std::vector<std::future<scatk::f64>> futures(THREAD_COUNT);
         for (scatk::u64 i = 0; i < point_count; i++)
         {
+            scatk::u64 j = 0;
             r1.readline(buffer1, i, point_count, trace_count);
             r2.readline(buffer2, i, point_count, trace_count);
             // check if thread is done
             bool ready = false;
-            for (scatk::u64 j = 0; 1; j++)
+            while (1)
             {
                 j = j % THREAD_COUNT;
                 if (thread_status.at(j) == -1)
@@ -234,6 +235,7 @@ int main(int argc, char** argv)
                         // new promise
                         promises.at(j) = std::promise<scatk::f64>();
                     }
+                    j++;
                 }
             }
         }
