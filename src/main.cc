@@ -205,7 +205,6 @@ int main(int argc, char** argv)
             r1.readline(buffer1, i, point_count, trace_count);
             r2.readline(buffer2, i, point_count, trace_count);
             // check if thread is done
-            bool ready = false;
             while (1)
             {
                 j = j % THREAD_COUNT;
@@ -415,6 +414,101 @@ int main(int argc, char** argv)
         }
 
     }
-
+    else if (plot_what == "corr_single")
+    {
+        // transpose wave is required
+        if (!transposed)
+        {
+            std::cerr << "Please transpose the wave" << std::endl;
+            return 1;
+        }
+        scatk::reader r1(trace_file, scatk::reader::Mode::HEX);
+        std::vector<scatk::f64> buffer1(trace_count);
+        // middle value of trace_count
+        scatk::reader r2(reference_file, scatk::reader::Mode::HEX);
+        std::vector<scatk::f64> buffer2(trace_count);
+        r2.readline(buffer2, 0, 1, trace_count);
+        // now buffer2 is the estimated power
+        std::vector<scatk::f64> result(point_count);
+        // thread pool
+        std::vector<std::thread> threads(THREAD_COUNT);
+        std::vector<scatk::i64> thread_status(THREAD_COUNT, -1);
+        std::vector<std::promise<scatk::f64>> promises(THREAD_COUNT);
+        // initialize promises
+        for (scatk::u64 i = 0; i < THREAD_COUNT; i++)
+        {
+            promises.at(i) = std::promise<scatk::f64>();
+        }
+        std::vector<std::future<scatk::f64>> futures(THREAD_COUNT);
+        for (scatk::u64 i = 0; i < point_count; i++)
+        {
+            scatk::u64 j = 0;
+            r1.readline(buffer1, i, point_count, trace_count);
+            // check if thread is done
+            while (1)
+            {
+                j = j % THREAD_COUNT;
+                if (thread_status.at(j) == -1)
+                {
+                    // start thread
+                    futures.at(j) = promises.at(j).get_future();
+                    std::thread t(scatk::corr, buffer1, buffer2, std::move(promises.at(j)));
+                    threads.at(j) = std::move(t);
+                    thread_status.at(j) = i;
+                    printf("Start thread %lld for line %lld\n", j, i + 1);
+                    fflush(stdout);
+                    break;
+                }
+                else
+                {
+                    // check if thread is done, if not continue
+                    if (futures.at(j).wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+                    {
+                        // get result
+                        result.at(thread_status.at(j)) = futures.at(j).get();
+                        // if joinable, join
+                        if (threads.at(j).joinable())
+                            threads.at(j).join();
+                        // set thread status to -1
+                        thread_status.at(j) = -1;
+                        // new promise
+                        promises.at(j) = std::promise<scatk::f64>();
+                    }
+                    j++;
+                }
+            }
+        }
+        // wait for all threads to finish
+        for (scatk::u64 j = 0; j < THREAD_COUNT; j++)
+        {
+            if (thread_status.at(j) != -1)
+            {
+                // get result
+                result.at(thread_status.at(j)) = futures.at(j).get();
+                // if joinable, join
+                if (threads.at(j).joinable())
+                    threads.at(j).join();
+                // set thread status to -1
+                thread_status.at(j) = -1;
+            }
+        }
+        printf("\n");
+        r1.close();
+        r2.close();
+        if (!no_gui)
+        {
+            plt::plot(result);
+            plt::show();
+        }
+        if (output_file != "")
+        {
+            std::ofstream out(output_file);
+            for (scatk::f64 value : result)
+            {
+                out << value << std::endl;
+            }
+            out.close();
+        }
+    }
     return 0;
 }

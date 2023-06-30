@@ -14,6 +14,7 @@
 namespace scatk 
 {
     void t_test(const std::vector<f64>& x, const std::vector<f64>& y, std::promise<f64>&& p);
+    void corr(const std::vector<f64>& x, const std::vector<f64>& y, std::promise<f64>&& p);
 } // namespace scatk
 
 #endif
