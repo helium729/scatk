@@ -47,16 +47,17 @@ void scatk::corr(const std::vector<f64>& x, const std::vector<f64>& y, std::prom
     // square each element of traces
     std::vector<scatk::f64> vec_squared1(vec1.size());
     std::vector<scatk::f64> vec_squared2(vec2.size());
-    std::transform(vec1.begin(), vec1.end(), vec_squared1.begin(), [](scatk::f64 x) { return x * x; });
-    std::transform(vec2.begin(), vec2.end(), vec_squared2.begin(), [](scatk::f64 x) { return x * x; });
+    std::transform(vec1.begin(), vec1.end(), vec_squared1.begin(), [](scatk::f64 tx) { return tx * tx; });
+    std::transform(vec2.begin(), vec2.end(), vec_squared2.begin(), [](scatk::f64 tx) { return tx * tx; });
     // for each column, subtract mean_squared
     std::vector<scatk::f64> vec_squared_minus_mean_squared1(vec_squared1.size());
     std::vector<scatk::f64> vec_squared_minus_mean_squared2(vec_squared2.size());
-    std::transform(vec_squared1.begin(), vec_squared1.end(), vec_squared_minus_mean_squared1.begin(), [mean_squared1](scatk::f64 x) { return x - mean_squared1; });
-    std::transform(vec_squared2.begin(), vec_squared2.end(), vec_squared_minus_mean_squared2.begin(), [mean_squared2](scatk::f64 x) { return x - mean_squared2; });
+    std::transform(vec_squared1.begin(), vec_squared1.end(), vec_squared_minus_mean_squared1.begin(), [mean_squared1](scatk::f64 tx) { return tx - mean_squared1; });
+    std::transform(vec_squared2.begin(), vec_squared2.end(), vec_squared_minus_mean_squared2.begin(), [mean_squared2](scatk::f64 tx) { return tx - mean_squared2; });
     scatk::f64 var1 = std::accumulate(vec_squared_minus_mean_squared1.begin(), vec_squared_minus_mean_squared1.end(), 0.0) / (x.size());
     scatk::f64 var2 = std::accumulate(vec_squared_minus_mean_squared2.begin(), vec_squared_minus_mean_squared2.end(), 0.0) / (y.size());
-    scatk::f64 cov = std::inner_product(vec1.begin(), vec1.end(), vec2.begin(), 0.0) / (x.size());
+    // calculate covariance
+    scatk::f64 cov = std::inner_product(vec1.begin(), vec1.end(), vec2.begin(), 0.0) / x.size() - mean1 * mean2;
     // calculate correlation coefficient
     scatk::f64 corr = cov / std::sqrt(var1 * var2);
     // return correlation coefficient

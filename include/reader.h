@@ -32,7 +32,7 @@ namespace scatk
         FILE* in;
         std::string path;
         Mode mode;
-        u64 last_line;
+        i64 last_line;
     };
 }
 

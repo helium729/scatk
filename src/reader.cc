@@ -16,6 +16,7 @@ reader::reader(std::string path, Mode mode)
     file->close();
     in = fopen(path.c_str(), "r");
     this->mode = mode;
+    this->last_line = -1;
 }
 
 reader::~reader()
